@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}Benutzerverwaltung{% endblock %}
+{% block header %}Benutzerverwaltung{% endblock %}
+{% block content %}
+<div style="display: grid; grid-template-columns: 1fr 2fr; gap: 30px;">
+    <!-- Linke Spalte (Das Formular) -->
+    <div class="card" style="align-self: start;">
+        <h3 id="form-title" style="font-size: 1.1rem; border-bottom: 1px solid var(--border); padding-bottom: 10px; margin-bottom: 15px;">Benutzer anlegen / bearbeiten</h3>
+        <form action="/users/add" method="POST" id="userForm">
+            <div class="form-group">
+                <label>Benutzername</label>
+                <!-- id="usernameInput" hinzugefügt, um es per JS zu füllen -->
+                <input type="text" id="usernameInput" name="username" required pattern="[a-zA-Z0-9_-]+">
+            </div>
+            <div class="form-group">
+                <label>Passwort (Leer lassen für bestehende)</label>
+                <input type="password" id="passwordInput" name="password">
+            </div>
+            <div class="form-group">
+                <label>Gruppen (Kommagetrennt)</label>
+                <input type="text" id="groupsInput" name="groups">
+            </div>
+            <div class="form-group checkbox-group">
+                <label><input type="checkbox" id="activeInput" name="is_active" value="true" checked> Aktiv</label>
+            </div>
+            <button type="submit" id="submitBtn" style="width: 100%; margin-top: 10px;">💾 Speichern</button>
+            <button type="button" id="cancelEditBtn" style="width: 100%; margin-top: 10px; display: none; background-color: var(--text-muted);" onclick="resetForm()">Abbrechen</button>
+        </form>
+    </div>
+
+    <!-- Rechte Spalte (Die Liste) -->
+    <div>
+        <table>
+            <thead><tr><th>User</th><th>Gruppen</th><th>Status</th><th style="text-align: right;">Aktion</th></tr></thead>
+            <tbody>
+                {% for user in users %}
+                <tr>
+                    <td style="font-weight: bold;">{{ user.username }}</td>
+                    <td>{{ user.groups or '-' }}</td>
+                    <td>
+                        {% if user.is_active %}<span class="badge" style="background-color: #d4edda; color: #27ae60;">Aktiv</span>
+                        {% else %}<span class="badge" style="background-color: #f8d7da; color: #721c24;">Deaktiviert</span>{% endif %}
+                    </td>
+                    <td style="text-align: right;">
+                        <!-- NEU: Der Edit Button -->
+                        <button class="edit" onclick="editUser('{{ user.username }}', '{{ user.groups }}', {{ 'true' if user.is_active else 'false' }})">✎ Bearbeiten</button>
+                        
+                        <form action="/users/delete/{{ user.id }}" method="POST" onsubmit="return confirm('Soll der Benutzer {{ user.username }} wirklich gelöscht werden?');" style="display:inline;"><button type="submit" class="danger">Löschen</button></form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    function editUser(username, groups, isActive) {
+        document.getElementById('form-title').innerText = "Benutzer bearbeiten: " + username;
+        
+        // Formularfelder befüllen
+        let uInput = document.getElementById('usernameInput');
+        uInput.value = username;
+        uInput.readOnly = true; // Username sollte nicht geändert werden
+        uInput.style.backgroundColor = "#eee";
+        
+        document.getElementById('groupsInput').value = groups === "None" ? "" : groups;
+        document.getElementById('activeInput').checked = isActive;
+        
+        // Buttons anpassen
+        document.getElementById('submitBtn').innerText = "💾 Änderungen speichern";
+        document.getElementById('cancelEditBtn').style.display = "block";
+    }
+
+    function resetForm() {
+        document.getElementById('form-title').innerText = "Benutzer anlegen / bearbeiten";
+        document.getElementById('userForm').reset();
+        
+        let uInput = document.getElementById('usernameInput');
+        uInput.readOnly = false;
+        uInput.style.backgroundColor = "white";
+        
+        document.getElementById('submitBtn').innerText = "💾 Speichern";
+        document.getElementById('cancelEditBtn').style.display = "none";
+    }
+</script>
+{% endblock %}

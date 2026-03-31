@@ -1,0 +1,184 @@
+from fastapi import FastAPI, Request, Depends, Form
+from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from sqlalchemy.orm import Session
+from typing import List, Optional
+import os
+import uvicorn
+
+from database import init_db, get_db, Share, User, share_user_link
+from system_ops import check_service_status, create_or_update_system_user, delete_system_user, check_practical_access
+from config_gen import generate_and_apply_configs
+
+app = FastAPI(title="TinyShare")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
+templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
+
+@app.on_event("startup")
+def on_startup():
+    init_db()
+
+@app.get("/", response_class=HTMLResponse)
+async def dashboard(request: Request, db: Session = Depends(get_db)):
+    shares = db.query(Share).all()
+    users = db.query(User).all()
+    services = [
+        {"name": "Samba (SMB)", "status": check_service_status("smbd")},
+        {"name": "NFS Server", "status": check_service_status("nfs-kernel-server")}
+    ]
+    return templates.TemplateResponse("dashboard.html", {
+        "request": request, "shares": shares, "users": users, "services": services
+    })
+
+# --- SHARE VERWALTUNG ---
+@app.get("/shares", response_class=HTMLResponse)
+async def list_shares(request: Request, db: Session = Depends(get_db)):
+    db_shares = db.query(Share).all()
+    all_users = db.query(User).all()
+    
+    # Aufbereiten für Edit-JS (IDs für Checkboxen)
+    shares_data = []
+    for s in db_shares:
+        links = db.execute(share_user_link.select().where(share_user_link.c.share_id == s.id)).fetchall()
+        shares_data.append({
+            "id": s.id, "name": s.name, "path": s.path, "status": s.status,
+            "smb_enabled": s.smb_enabled, "nfs_enabled": s.nfs_enabled, "allowed_ips": s.allowed_ips,
+            "rw_ids": [l.user_id for l in links if l.access_level == 'rw'],
+            "ro_ids": [l.user_id for l in links if l.access_level == 'ro']
+        })
+        
+    return templates.TemplateResponse("shares.html", {"request": request, "shares": shares_data, "all_users": all_users})
+
+@app.post("/shares/add")
+async def add_share(
+    share_id: Optional[int] = Form(None),
+    name: str = Form(...), path: str = Form(...), allowed_ips: str = Form(""),
+    proto_smb: bool = Form(False), proto_nfs: bool = Form(False), is_active: bool = Form(False),
+    users_rw: List[int] = Form([]), users_ro: List[int] = Form([]),
+    db: Session = Depends(get_db)
+):
+    # Praktische Rechteprüfung VOR dem Speichern
+    status = "Aktiv" if is_active else "Inaktiv"
+    if status == "Aktiv":
+        for uid in set(users_rw + users_ro):
+            user = db.query(User).filter(User.id == uid).first()
+            if user:
+                prac = check_practical_access(user.username, path)
+                if (uid in users_rw and not prac["write"]) or (uid in users_ro and not prac["read"]):
+                    status = "Problem"
+                    break
+
+    if share_id:
+        share = db.query(Share).filter(Share.id == share_id).first()
+        share.name = name
+        share.path = path
+        share.allowed_ips = allowed_ips
+        share.smb_enabled = proto_smb
+        share.nfs_enabled = proto_nfs
+        share.status = status
+        db.execute(share_user_link.delete().where(share_user_link.c.share_id == share.id))
+    else:
+        share = Share(name=name, path=path, allowed_ips=allowed_ips, smb_enabled=proto_smb, nfs_enabled=proto_nfs, status=status)
+        db.add(share)
+    
+    db.commit()
+    db.refresh(share)
+    
+    for uid in users_rw: db.execute(share_user_link.insert().values(share_id=share.id, user_id=uid, access_level="rw"))
+    for uid in users_ro:
+        if uid not in users_rw: db.execute(share_user_link.insert().values(share_id=share.id, user_id=uid, access_level="ro"))
+            
+    db.commit()
+    generate_and_apply_configs()
+    return RedirectResponse(url="/shares", status_code=303)
+
+@app.post("/shares/delete/{share_id}")
+async def delete_share(share_id: int, db: Session = Depends(get_db)):
+    share = db.query(Share).filter(Share.id == share_id).first()
+    if share: db.delete(share); db.commit(); generate_and_apply_configs()
+    return RedirectResponse(url="/shares", status_code=303)
+
+@app.get("/shares/{share_id}/panel", response_class=HTMLResponse)
+async def share_panel(share_id: int, request: Request, db: Session = Depends(get_db)):
+    share = db.query(Share).filter(Share.id == share_id).first()
+    all_users = db.query(User).all()
+    db_links = db.execute(share_user_link.select().where(share_user_link.c.share_id == share_id)).fetchall()
+    user_access = {link.user_id: link.access_level for link in db_links}
+    
+    matrix = []
+    issues = {} # Wir nutzen ein Dict mit error_type als Key, um Duplikate zu vermeiden
+    
+    for u in all_users:
+        samba_acc = user_access.get(u.id, "none")
+        nfs_acc = "rw" if share.nfs_enabled else "none"
+        
+        # Test überspringen, wenn der User in TinyShare sowieso gar keinen Zugriff haben soll
+        # (Außer bei NFS, da checken wir zur Sicherheit immer den ersten User, wenn NFS an ist)
+        if samba_acc == "none" and not share.nfs_enabled:
+            matrix.append({
+                "username": u.username, "samba_acc": "none", "nfs_acc": "none",
+                "practical_r": None, "practical_w": None, "sys_error": False
+            })
+            continue
+
+        practical = check_practical_access(u.username, share.path)
+        
+        sys_error = False
+        # Fehler prüfen: Wenn der User laut TinyShare RW haben soll, aber nicht schreiben darf
+        if samba_acc == "rw" and not practical["write"]: sys_error = True
+        # Wenn er laut TinyShare RO haben soll, aber nicht lesen darf
+        if samba_acc == "ro" and not practical["read"]: sys_error = True
+        # Bei NFS prüfen wir generell, ob zumindest gelesen werden kann
+        if share.nfs_enabled and not practical["read"]: sys_error = True
+        
+        if sys_error and practical.get("error_type"):
+            # Fehler im Dict speichern (damit "Pfad nicht gefunden" nicht 5x aufploppt)
+            err_key = practical["error_type"]
+            if err_key not in issues:
+                issues[err_key] = {
+                    "affected_users": [u.username],
+                    "system_msg": practical["system_msg"],
+                    "description": practical["description"],
+                    "solution": practical["solution"]
+                }
+            else:
+                issues[err_key]["affected_users"].append(u.username)
+        
+        matrix.append({
+            "username": u.username, "samba_acc": samba_acc, "nfs_acc": nfs_acc,
+            "practical_r": practical["read"], "practical_w": practical["write"], "sys_error": sys_error
+        })
+        
+    return templates.TemplateResponse("components/panel.html", {
+        "request": request, "share": share, "matrix": matrix, "issues": list(issues.values())
+    })
+
+# --- USER VERWALTUNG ---
+@app.get("/users", response_class=HTMLResponse)
+async def list_users(request: Request, db: Session = Depends(get_db)):
+    return templates.TemplateResponse("users.html", {"request": request, "users": db.query(User).all()})
+
+@app.post("/users/add")
+async def add_user(
+    username: str = Form(...), password: str = Form(""), groups: str = Form(""),
+    is_active: bool = Form(False), db: Session = Depends(get_db)
+):
+    create_or_update_system_user(username, password if password else None, groups, is_active)
+    user = db.query(User).filter(User.username == username).first()
+    if user:
+        user.groups = groups; user.is_active = is_active
+    else:
+        db.add(User(username=username, groups=groups, is_active=is_active))
+    db.commit()
+    generate_and_apply_configs()
+    return RedirectResponse(url="/users", status_code=303)
+
+@app.post("/users/delete/{user_id}")
+async def remove_user(user_id: int, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.id == user_id).first()
+    if user: delete_system_user(user.username); db.delete(user); db.commit()
+    return RedirectResponse(url="/users", status_code=303)
+
+if __name__ == "__main__": uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

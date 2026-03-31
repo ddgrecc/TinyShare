@@ -1,0 +1,50 @@
+from sqlalchemy import create_engine, Column, Integer, String, Boolean, ForeignKey, Table
+from sqlalchemy.orm import declarative_base, sessionmaker, relationship
+import os
+
+DATABASE_URL = "sqlite:////opt/tinyshare/tinyshare.db"
+
+# Stelle sicher, dass der Ordner existiert
+os.makedirs("/opt/tinyshare", exist_ok=True)
+
+engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
+
+# Many-to-Many Beziehung für User-Berechtigungen auf Shares
+share_user_link = Table(
+    'share_user_link', Base.metadata,
+    Column('share_id', Integer, ForeignKey('shares.id', ondelete="CASCADE"), primary_key=True),
+    Column('user_id', Integer, ForeignKey('users.id', ondelete="CASCADE"), primary_key=True),
+    Column('access_level', String) # "rw" oder "ro"
+)
+
+class User(Base):
+    __tablename__ = "users"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, unique=True, index=True)
+    is_active = Column(Boolean, default=True)
+    groups = Column(String, default="") # Kommagetrennte Gruppen
+
+class Share(Base):
+    __tablename__ = "shares"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, index=True)
+    path = Column(String)
+    allowed_ips = Column(String, default="")
+    smb_enabled = Column(Boolean, default=True)
+    nfs_enabled = Column(Boolean, default=False)
+    
+    users = relationship("User", secondary=share_user_link, backref="shares")
+
+def init_db():
+    Base.metadata.create_all(bind=engine)
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()

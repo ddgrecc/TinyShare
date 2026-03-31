@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+
+{% block title %}Share Details - {{ share.name }}{% endblock %}
+{% block header %}Details: {{ share.name }}{% endblock %}
+
+{% block content %}
+<div style="margin-bottom: 20px;">
+    <a href="/shares" style="text-decoration: none; color: var(--sidebar-bg); font-weight: bold;">← Zurück zur Übersicht</a>
+</div>
+
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px;">
+    
+    <!-- Linke Seite: Rechte Matrix -->
+    <div class="card">
+        <h3 style="font-size: 1.1rem; border-bottom: 1px solid var(--border); padding-bottom: 10px; margin-bottom: 15px;">Samba Rechte-Matrix</h3>
+        
+        <table style="margin-top: 0; box-shadow: none; border: 1px solid var(--border);">
+            <thead>
+                <tr>
+                    <th>Benutzer</th>
+                    <th style="text-align: center;">Kein Zugriff</th>
+                    <th style="text-align: center;">Lesen (RO)</th>
+                    <th style="text-align: center;">Schreiben (RW)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in matrix %}
+                <tr>
+                    <td style="font-weight: bold;">{{ row.username }}</td>
+                    <td style="text-align: center;">
+                        {% if row.access == 'none' %}<span style="color: #e74c3c; font-weight: bold;">✕</span>{% endif %}
+                    </td>
+                    <td style="text-align: center;">
+                        {% if row.access == 'ro' %}<span style="color: #f39c12; font-weight: bold;">✔</span>{% endif %}
+                    </td>
+                    <td style="text-align: center;">
+                        {% if row.access == 'rw' %}<span style="color: #27ae60; font-weight: bold;">✔✔</span>{% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Rechte Seite: Diagnose Engine -->
+    <div class="card">
+        <h3 style="font-size: 1.1rem; border-bottom: 1px solid var(--border); padding-bottom: 10px; margin-bottom: 15px;">System Diagnose (Host-Rechte)</h3>
+        
+        <div style="background: #f8f9fa; padding: 15px; border-radius: 4px; font-family: monospace; font-size: 0.9rem; margin-bottom: 15px;">
+            <strong>Prüfe Pfad:</strong> {{ share.path }}<br>
+            
+            {% if diagnosis.exists %}
+                <span style="color: #27ae60;">✔ Verzeichnis existiert.</span><br>
+                <strong>Besitzer:</strong> {{ diagnosis.owner }}<br>
+                <strong>Gruppe:</strong> {{ diagnosis.group }}<br>
+                <strong>CHMOD:</strong> {{ diagnosis.permissions }}
+            {% else %}
+                <span style="color: #e74c3c;">✕ Verzeichnis existiert nicht im LXC! (Fehlt der Bind-Mount?)</span>
+            {% endif %}
+        </div>
+
+        {% if conflicts %}
+            <div style="background: #fdebd0; border-left: 4px solid #e67e22; padding: 15px; border-radius: 4px;">
+                <h4 style="color: #e67e22; margin-bottom: 10px; font-size: 1rem;">⚠️ Mögliche Rechte-Konflikte entdeckt</h4>
+                <ul style="margin-left: 20px; font-size: 0.9rem; color: #333;">
+                    {% for conflict in conflicts %}
+                        <li style="margin-bottom: 5px;">{{ conflict }}</li>
+                    {% endfor %}
+                </ul>
+                <p style="font-size: 0.8rem; margin-top: 10px; color: var(--text-muted);">
+                    TinyShare ändert keine Host-Rechte. Löse dies auf dem Host z.B. mittels `chmod` oder Gruppen-Zuweisungen.
+                </p>
+            </div>
+        {% elif diagnosis.exists %}
+            <div style="background: #d4edda; border-left: 4px solid #27ae60; padding: 15px; border-radius: 4px; color: #155724;">
+                <span style="font-weight: bold;">Keine offensichtlichen Samba-Konflikte gefunden.</span>
+            </div>
+        {% endif %}
+    </div>
+
+</div>
+{% endblock %}

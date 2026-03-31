@@ -1,0 +1,70 @@
+<h2 style="font-size: 1.8rem; margin-bottom: 10px;">{{ share.name }}</h2>
+<p style="font-family: monospace; color: var(--text-muted); background: #eee; padding: 5px 10px; display: inline-block; border-radius: 4px; margin-bottom: 25px;">{{ share.path }}</p>
+
+<h3 style="margin-bottom: 15px; color: var(--sidebar-bg);">Berechtigungs-Matrix</h3>
+<table class="matrix-table">
+    <thead>
+        <tr>
+            <th>Benutzer</th>
+            <th>Samba (SMB)</th>
+            <th>NFS (IP-Regel)</th>
+            <th>System-Test (Linux)</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for row in matrix %}
+        <tr style="{% if row.sys_error %}background-color: #fffafb;{% endif %}">
+            <td>{{ row.username }}</td>
+            
+            <!-- SAMBA -->
+            <td>
+                {% if row.samba_acc == 'rw' %}<span class="icon-badge ic-rw">✎ Read / Write</span>
+                {% elif row.samba_acc == 'ro' %}<span class="icon-badge ic-ro">👁 Read Only</span>
+                {% else %}<span class="icon-badge ic-none">✕ Kein Zugriff</span>{% endif %}
+            </td>
+            
+            <!-- NFS -->
+            <td>
+                {% if row.nfs_acc == 'rw' %}<span class="icon-badge ic-rw">✎ Erlaubt</span>
+                {% else %}<span class="icon-badge ic-none">Inaktiv</span>{% endif %}
+            </td>
+            
+            <!-- REAL TEST -->
+            <td>
+                {% if row.sys_error %}
+                    <span class="ic-sys-err">⚠️ Blockiert</span>
+                {% elif row.practical_w %} 
+                    <span class="ic-sys-ok">✔ RW OK</span>
+                {% elif row.practical_r %} 
+                    <span class="ic-sys-ok">✔ RO OK</span>
+                {% else %} 
+                    <span class="ic-sys-err">✕ Blockiert</span>
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<!-- Konflikt-Diagnose Box -->
+{% if has_errors %}
+<div style="margin-top: 30px; border: 1px solid #ffcdd2; background-color: #ffebee; border-radius: 8px; padding: 20px;">
+    <h4 style="color: #c62828; margin-bottom: 15px; display: flex; align-items: center; gap: 10px;">
+        <span style="font-size: 1.5rem;">⚠️</span> Konflikt bei den Zugriffsrechten entdeckt!
+    </h4>
+    <p style="color: #333; line-height: 1.5; margin-bottom: 15px;">
+        Mindestens ein Benutzer hat über das TinyShare Web-Interface Berechtigungen erhalten, wird aber vom darunterliegenden Linux-Dateisystem blockiert.
+    </p>
+    
+    <div style="background: white; padding: 15px; border-radius: 6px; border: 1px solid #ffcdd2;">
+        <strong>Lösungsvorschlag:</strong><br><br>
+        1. Stelle sicher, dass die Nutzer der richtigen Linux-Gruppe angehören (z.B. <code>users</code>).<br>
+        2. Prüfe auf dem Proxmox-Host die Berechtigungen des Ordners:<br>
+        <code style="display: block; background: #f4f5f7; padding: 8px; margin: 10px 0; border-radius: 4px;">chown -R root:users {{ share.path }}<br>chmod -R 775 {{ share.path }}</code>
+    </div>
+</div>
+{% else %}
+<div style="margin-top: 30px; border: 1px solid #c8e6c9; background-color: #e8f5e9; border-radius: 8px; padding: 15px; color: #2e7d32;">
+    <strong>✔ Alles im grünen Bereich.</strong> Das System meldet keine Widersprüche zwischen Samba-Config und Dateisystem-Rechten.
+</div>
+{% endif %}

@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% block title %}Vorlagen-Verwaltung{% endblock %}
+{% block header %}Konfigurations-Vorlagen{% endblock %}
+{% block content %}
+<div style="display: grid; grid-template-columns: 1fr 2fr; gap: 30px;">
+    
+    <div class="card" style="align-self: start;">
+        <h3 id="form-title" style="font-size: 1.1rem; border-bottom: 1px solid var(--border); padding-bottom: 10px; margin-bottom: 15px;">Vorlage anlegen</h3>
+        <form action="/templates/add" method="POST" id="tplForm">
+            <!-- WICHTIG: Das Textfeld für Editieren verstecken wir, nutzen es aber im Hintergrund noch! -->
+            <input type="hidden" name="template_id" id="tplIdInput">
+            <!-- Das ist das unsichtbare Fallback für bestehende/Raw Edits, die wir per JS füllen -->
+            <input type="hidden" name="content" id="contentInput">
+            
+            <div class="form-group">abel>Name der Vorlage</label><input type="text" name="name" id="nameInput" required></div>
+            
+            <div class="form-group">
+                abel>Protokoll</label>
+                <select name="protocol" id="protoInput" onchange="toggleProtoOptions()" style="width: 100%; padding: 10px; border-radius: 4px;">
+                    <option value="smb">SMB (Samba)</option>
+                    <option value="nfs">NFS</option>
+                </select>
+            </div>
+
+            <!-- SAMBA OPTIONEN -->
+            <div id="smb_options" style="background: #f8f9fa; padding: 15px; border-radius: 6px; border: 1px solid var(--border);">
+                <h4 style="font-size: 0.9rem; margin-bottom: 10px; color: var(--sidebar-bg);">Samba Features</h4>
+                
+                <div class="form-group checkbox-group" style="flex-direction: column; gap: 8px;">
+                    abel><input type="checkbox" id="smb_guest" value="yes"> <strong>Gast-Zugriff</strong> (Ohne Passwort lesbar)</label>
+                    
+                    abel style="margin-top: 10px;"><input type="checkbox" id="smb_macos" value="yes" onchange="document.getElementById('smb_tm').disabled = !this.checked"> <strong>Apple / macOS Optimierung</strong> (VFS Fruit, Catia)</label>
+                    abel style="margin-left: 20px; font-size: 0.85rem;"><input type="checkbox" id="smb_tm" value="yes" disabled> Als TimeMachine Backup-Ziel deklarieren</label>
+                    
+                    abel style="margin-top: 10px;"><input type="checkbox" id="smb_recycle" value="yes"> <strong>Papierkorb aktivieren</strong> (Gelöschte Dateien wandern in '.recycle')</label>
+                    
+                    abel style="margin-top: 10px; color: #c62828;"><input type="checkbox" id="smb_legacy" value="yes"> <strong>Legacy SMB1 erlauben</strong> (Sicherheitsrisiko! Nur für alte Drucker)</label>
+                </div>
+            </div>
+
+            <!-- NFS OPTIONEN -->
+            <div id="nfs_options" style="display: none; background: #f8f9fa; padding: 15px; border-radius: 6px; border: 1px solid var(--border);">
+                <h4 style="font-size: 0.9rem; margin-bottom: 10px; color: var(--sidebar-bg);">NFS Parameter</h4>
+                
+                <div class="form-group">
+                    abel>Schreibverhalten</label>
+                    <select id="nfs_sync" style="width: 100%; padding: 5px; border-radius: 4px;">
+                        <option value="sync">Sync (Sicherer, Bestätigt jeden Schreibvorgang)</option>
+                        <option value="async">Async (Schneller, RAM-Cache genutzt)</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    abel>Root-Mapping</label>
+                    <select id="nfs_squash" style="width: 100%; padding: 5px; border-radius: 4px;">
+                        <option value="no_root_squash">No Root Squash (Client-Root darf Host-Dateien als Root schreiben)</option>
+                        <option value="root_squash">Root Squash (Client-Root wird zu Nobody gemappt)</option>
+                        <option value="all_squash">All Squash (Alle User werden zu Nobody gemappt)</option>
+                    </select>
+                </div>
+
+                <div class="form-group checkbox-group">
+                    abel><input type="checkbox" id="nfs_subtree" value="yes"> Subtree Check aktivieren (Standardmäßig aus Performancegründen aus)</label>
+                </div>
+            </div>
+
+            <!-- Manuelle (Raw) Bearbeitung (wird beim Editieren von Defaults eingeblendet) -->
+            <div id="raw_editor_hint" style="display: none; color: #f39c12; font-size: 0.85rem; margin-top: 15px; padding: 10px; background: #fff8e1; border-radius: 4px;">
+                ⚠️ Du bearbeitest eine komplexere Vorlage. Der UI-Builder ist deaktiviert. Nutze den Raw-Editor (wird hier eingeblendet, falls wir ihn im echten Backend noch drinlassen wollten - für jetzt blenden wir hier einen Text ein, dass diese Vorlage nur im Code änderbar ist). Wir überschreiben das bei "Speichern" mit dem Config-Builder, es sei denn, wir stoppen das.
+                <br><em>Für dieses Setup bauen wir den Generator so, dass er die Checkboxen beim Speichern zu Raw-Text zusammenbaut.</em>
+            </div>
+
+            <button type="button" onclick="buildAndSubmit()" id="submitBtn" style="width: 100%; margin-top: 15px;">💾 Speichern</button>
+            <button type="button" id="cancelBtn" style="width: 100%; margin-top: 10px; display: none; background: var(--text-muted);" onclick="location.reload()">Abbrechen</button>
+        </form>
+    </div>
+
+    <!-- Rechte Spalte (Liste) bleibt exakt gleich! (Hier weggelassen aus Platzgründen) -->
+    <div>
+        <!-- ... Dein bestehender Table Code aus templates.html ... -->
+    </div>
+</div>
+
+<script>
+    function toggleProtoOptions() {
+        const proto = document.getElementById('protoInput').value;
+        document.getElementById('smb_options').style.display = proto === 'smb' ? 'block' : 'none';
+        document.getElementById('nfs_options').style.display = proto === 'nfs' ? 'block' : 'none';
+    }
+
+    // Diese Funktion baut aus den Checkboxen den RAW-String und schickt das Formular ab
+    function buildAndSubmit() {
+        const proto = document.getElementById('protoInput').value;
+        let finalContent = "";
+
+        if (proto === 'smb') {
+            // Basis
+            finalContent += "read only = no\n";
+            finalContent += "browseable = yes\n";
+            finalContent += document.getElementById('smb_guest').checked ? "guest ok = yes\n" : "guest ok = no\n";
+            
+            // Legacy
+            if(document.getElementById('smb_legacy').checked) {
+                finalContent += "server min protocol = NT1\n";
+                finalContent += "ntlm auth = ntlmv1-permitted\n";
+            }
+
+            // VFS Objects (Apple + Recycle)
+            let vfs = [];
+            if(document.getElementById('smb_macos').checked) vfs.push("catia", "fruit", "streams_xattr");
+            if(document.getElementById('smb_recycle').checked) vfs.push("recycle");
+            
+            if (vfs.length > 0) {
+                finalContent += "vfs objects = " + vfs.join(" ") + "\n";
+            }
+            
+            // Apple Spezifika
+            if(document.getElementById('smb_macos').checked) {
+                finalContent += "fruit:metadata = stream\nfruit:model = MacSamba\nfruit:veto_appledouble = no\nfruit:posix_rename = yes\nfruit:zero_file_id = yes\nfruit:wipe_intentionally_left_blank_rfork = yes\nfruit:delete_empty_adfiles = yes\n";
+                if(document.getElementById('smb_tm').checked) finalContent += "fruit:time machine = yes\n";
+            }
+            
+            // Recycle Spezifika
+            if(document.getElementById('smb_recycle').checked) {
+                finalContent += "recycle:repository = .recycle\nrecycle:keeptree = yes\nrecycle:versions = yes\n";
+            }
+        } 
+        else if (proto === 'nfs') {
+            // NFS Parameter in einer Zeile, Kommagetrennt
+            let opts = ["rw"];
+            opts.push(document.getElementById('nfs_sync').value);
+            opts.push(document.getElementById('nfs_squash').value);
+            opts.push(document.getElementById('nfs_subtree').checked ? "subtree_check" : "no_subtree_check");
+            
+            finalContent = opts.join(",");
+        }
+
+        // Schreibe generierten String ins versteckte Feld
+        document.getElementById('contentInput').value = finalContent;
+        // Submit
+        document.getElementById('tplForm').submit();
+    }
+</script>
+{% endblock %}

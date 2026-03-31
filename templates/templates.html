@@ -1,0 +1,229 @@
+{% extends "base.html" %}
+{% block title %}Vorlagen-Verwaltung{% endblock %}
+{% block header %}Konfigurations-Vorlagen{% endblock %}
+{% block content %}
+<div style="display: grid; grid-template-columns: 1fr 2fr; gap: 30px;">
+    
+    <!-- LINKE SPALTE: Formular mit Tabs -->
+    <div class="card" style="align-self: start;">
+        <h3 id="form-title" style="font-size: 1.1rem; border-bottom: 1px solid var(--border); padding-bottom: 10px; margin-bottom: 15px;">Vorlage anlegen</h3>
+        <form action="/templates/add" method="POST" id="tplForm">
+            <input type="hidden" name="template_id" id="tplIdInput">
+            <!-- Dieses Feld entscheidet, ob wir den UI-Builder (false) oder den Raw-Editor (true) abschicken -->
+            <input type="hidden" name="use_raw" id="useRawInput" value="false">
+            <input type="hidden" name="content" id="contentInput">
+            
+            <div class="form-group">
+                <label>Name der Vorlage</label>
+                <input type="text" name="name" id="nameInput" required>
+            </div>
+            
+            <div class="form-group">
+                <label>Protokoll</label>
+                <select name="protocol" id="protoInput" onchange="toggleProtoOptions()" style="width: 100%; padding: 10px; border-radius: 4px; border: 1px solid var(--border);">
+                    <option value="smb">SMB (Samba)</option>
+                    <option value="nfs">NFS</option>
+                </select>
+            </div>
+
+            <!-- CSS TABS -->
+            <div class="tabs">
+                <input type="radio" name="tab-group" id="tab1" checked onchange="document.getElementById('useRawInput').value = 'false'">
+                <input type="radio" name="tab-group" id="tab2" onchange="document.getElementById('useRawInput').value = 'true'">
+                
+                <div class="tabs-header" style="width: 100%; display: flex; position: relative; z-index: 1;">
+                    <label for="tab1" class="tab-label">UI Builder</label>
+                    <label for="tab2" class="tab-label">Raw Editor</label>
+                </div>
+                
+                <!-- TAB 1: UI BUILDER -->
+                <div id="content1" class="tab-content">
+                    <!-- SAMBA OPTIONEN -->
+                    <div id="smb_options">
+                        <div class="form-group checkbox-group" style="flex-direction: column; gap: 10px; align-items: flex-start;">
+                            <label style="display: flex; align-items: flex-start; gap: 8px;">
+                                <input type="checkbox" id="smb_guest" value="yes" style="margin-top: 3px;"> 
+                                <span><strong>Gast-Zugriff</strong><br><small style="color: var(--text-muted);">Ohne Passwort lesbar</small></span>
+                            </label>
+                            <label style="display: flex; align-items: flex-start; gap: 8px; margin-top: 5px;">
+                                <input type="checkbox" id="smb_macos" value="yes" style="margin-top: 3px;" onchange="document.getElementById('smb_tm').disabled = !this.checked"> 
+                                <span><strong>Apple / macOS Optimierung</strong><br><small style="color: var(--text-muted);">VFS Fruit, Catia Modul</small></span>
+                            </label>
+                            <label style="display: flex; align-items: flex-start; gap: 8px; margin-left: 25px;">
+                                <input type="checkbox" id="smb_tm" value="yes" disabled style="margin-top: 3px;"> 
+                                <span style="font-size: 0.9rem;">Als TimeMachine Backup-Ziel deklarieren</span>
+                            </label>
+                            <label style="display: flex; align-items: flex-start; gap: 8px; margin-top: 5px;">
+                                <input type="checkbox" id="smb_recycle" value="yes" style="margin-top: 3px;"> 
+                                <span><strong>Papierkorb aktivieren</strong><br><small style="color: var(--text-muted);">Gelöschte Dateien wandern in '.recycle'</small></span>
+                            </label>
+                            <label style="display: flex; align-items: flex-start; gap: 8px; margin-top: 5px; color: #c62828;">
+                                <input type="checkbox" id="smb_legacy" value="yes" style="margin-top: 3px;"> 
+                                <span><strong>Legacy SMB1 erlauben</strong><br><small>Sicherheitsrisiko! Nur für alte Drucker</small></span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- NFS OPTIONEN -->
+                    <div id="nfs_options" style="display: none;">
+                        <div class="form-group">
+                            <label>Schreibverhalten</label>
+                            <select id="nfs_sync" style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid var(--border);">
+                                <option value="sync">Sync (Sicherer, bestätigt jeden Schreibvorgang)</option>
+                                <option value="async">Async (Schneller, RAM-Cache genutzt)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Root-Mapping</label>
+                            <select id="nfs_squash" style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid var(--border);">
+                                <option value="no_root_squash">No Root Squash (Client-Root darf als Root schreiben)</option>
+                                <option value="root_squash" selected>Root Squash (Client-Root wird zu 'Nobody' gemappt)</option>
+                                <option value="all_squash">All Squash (Alle User werden zu 'Nobody' gemappt)</option>
+                            </select>
+                        </div>
+                        <div class="form-group checkbox-group" style="margin-top: 15px;">
+                            <label style="display: flex; align-items: center; gap: 8px;">
+                                <input type="checkbox" id="nfs_subtree" value="yes"> 
+                                <span style="font-size: 0.9rem;">Subtree Check aktivieren (idR. deaktiviert)</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TAB 2: RAW EDITOR -->
+                <div id="content2" class="tab-content">
+                    <p style="font-size: 0.85rem; color: #e67e22; margin-bottom: 10px;">⚠️ Änderungen hier überschreiben die Einstellungen des UI Builders vollständig!</p>
+                    <textarea id="rawTextArea" rows="10" style="width: 100%; padding: 10px; border-radius: 4px; font-family: monospace; border: 1px solid var(--border);" placeholder="Raw Konfiguration hier eintragen..."></textarea>
+                </div>
+            </div>
+
+            <button type="button" onclick="buildAndSubmit()" id="submitBtn" style="width: 100%; margin-top: 20px;">💾 Speichern</button>
+            <button type="button" id="cancelBtn" style="width: 100%; margin-top: 10px; display: none; background: var(--text-muted);" onclick="location.reload()">Abbrechen</button>
+        </form>
+    </div>
+
+    <!-- RECHTE SPALTE: Liste der Vorlagen -->
+    <div>
+        <h3 style="font-size: 1.1rem; margin-bottom: 15px;">Vorhandene Vorlagen</h3>
+        <table>
+            <thead><tr><th>Name</th><th>Protokoll</th><th style="text-align: right;">Aktion</th></tr></thead>
+            <tbody>
+                {% for t in templates %}
+                <tr>
+                    <td style="font-weight: bold;">
+                        {{ t.name }}
+                        {% if t.is_system_default %}<span class="badge" style="background:#e2e3e5; color:#333; margin-left: 5px;">Default</span>{% endif %}
+                    </td>
+                    <td>
+                        {% if t.protocol == 'smb' %}<span class="badge smb">SMB</span>
+                        {% else %}<span class="badge nfs">NFS</span>{% endif %}
+                    </td>
+                    <td style="text-align: right;">
+                        {% if not t.is_system_default %}
+                        <!-- NEU: Der Edit Button für die Vorlagen! Wir escapen den Content sicher für JS -->
+                        <button class="edit" onclick="editTemplate({{ t.id }}, '{{ t.name }}', '{{ t.protocol }}', `{{ t.content | replace('`', '\\`') }}`)">✎ Bearbeiten</button>
+                        
+                        <form action="/templates/delete/{{ t.id }}" method="POST" onsubmit="return confirm('Vorlage wirklich löschen?');" style="display:inline;">
+                            <button type="submit" class="danger">Löschen</button>
+                        </form>
+                        {% else %}
+                        <span style="color: var(--text-muted); font-size: 0.8rem;">Gesperrt (System)</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="3" style="text-align: center; color: var(--text-muted);">Keine Vorlagen vorhanden.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    // Schaltet zwischen SMB und NFS Optionen im UI Builder um
+    function toggleProtoOptions() {
+        const proto = document.getElementById('protoInput').value;
+        document.getElementById('smb_options').style.display = proto === 'smb' ? 'block' : 'none';
+        document.getElementById('nfs_options').style.display = proto === 'nfs' ? 'block' : 'none';
+    }
+
+    // Füllt das Formular aus, wenn man auf "Bearbeiten" klickt
+    function editTemplate(id, name, proto, content) {
+        document.getElementById('form-title').innerText = "Vorlage bearbeiten: " + name;
+        document.getElementById('tplIdInput').value = id;
+        document.getElementById('nameInput').value = name;
+        document.getElementById('protoInput').value = proto;
+        toggleProtoOptions();
+        
+        // Raw Textarea füllen
+        document.getElementById('rawTextArea').value = content;
+        
+        // Wir springen standardmäßig auf den RAW Editor Tab, da wir nicht 100% sicher wissen, 
+        // ob der Nutzer vorher den Builder oder Raw benutzt hat
+        document.getElementById('tab2').checked = true;
+        document.getElementById('useRawInput').value = "true";
+
+        // Versuch (Best Effort), den UI Builder mit den Werten aus dem Raw Content zu füllen
+        if(proto === 'smb') {
+            document.getElementById('smb_guest').checked = content.includes('guest ok = yes');
+            document.getElementById('smb_legacy').checked = content.includes('protocol = NT1');
+            document.getElementById('smb_macos').checked = content.includes('vfs objects') && content.includes('fruit');
+            document.getElementById('smb_tm').disabled = !document.getElementById('smb_macos').checked;
+            document.getElementById('smb_tm').checked = content.includes('time machine = yes');
+            document.getElementById('smb_recycle').checked = content.includes('recycle');
+        } else if(proto === 'nfs') {
+            document.getElementById('nfs_sync').value = content.includes('async') ? 'async' : 'sync';
+            document.getElementById('nfs_subtree').checked = content.includes('subtree_check') && !content.includes('no_subtree_check');
+            if(content.includes('all_squash')) document.getElementById('nfs_squash').value = 'all_squash';
+            else if(content.includes('root_squash') && !content.includes('no_root_squash')) document.getElementById('nfs_squash').value = 'root_squash';
+            else document.getElementById('nfs_squash').value = 'no_root_squash';
+        }
+
+        document.getElementById('submitBtn').innerText = "💾 Änderungen speichern";
+        document.getElementById('cancelBtn').style.display = "block";
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function buildAndSubmit() {
+        const useRaw = document.getElementById('useRawInput').value === "true";
+        
+        if (useRaw) {
+            // Nutzer hat im Raw Tab gearbeitet -> Wir nehmen 1:1 was in der Textarea steht
+            document.getElementById('contentInput').value = document.getElementById('rawTextArea').value;
+        } else {
+            // Nutzer hat den UI Builder genutzt -> Wir generieren den String
+            const proto = document.getElementById('protoInput').value;
+            let finalContent = "";
+
+            if (proto === 'smb') {
+                finalContent += "read only = no\nbrowseable = yes\n";
+                finalContent += document.getElementById('smb_guest').checked ? "guest ok = yes\n" : "guest ok = no\n";
+                if(document.getElementById('smb_legacy').checked) {
+                    finalContent += "server min protocol = NT1\nntlm auth = ntlmv1-permitted\n";
+                }
+                let vfs = [];
+                if(document.getElementById('smb_macos').checked) vfs.push("catia", "fruit", "streams_xattr");
+                if(document.getElementById('smb_recycle').checked) vfs.push("recycle");
+                if (vfs.length > 0) finalContent += "vfs objects = " + vfs.join(" ") + "\n";
+                
+                if(document.getElementById('smb_macos').checked) {
+                    finalContent += "fruit:metadata = stream\nfruit:model = MacSamba\nfruit:veto_appledouble = no\nfruit:posix_rename = yes\nfruit:zero_file_id = yes\nfruit:wipe_intentionally_left_blank_rfork = yes\nfruit:delete_empty_adfiles = yes\n";
+                    if(document.getElementById('smb_tm').checked) finalContent += "fruit:time machine = yes\n";
+                }
+                if(document.getElementById('smb_recycle').checked) {
+                    finalContent += "recycle:repository = .recycle\nrecycle:keeptree = yes\nrecycle:versions = yes\n";
+                }
+            } 
+            else if (proto === 'nfs') {
+                let opts = ["rw", document.getElementById('nfs_sync').value, document.getElementById('nfs_squash').value];
+                opts.push(document.getElementById('nfs_subtree').checked ? "subtree_check" : "no_subtree_check");
+                finalContent = opts.join(",");
+            }
+            document.getElementById('contentInput').value = finalContent;
+        }
+
+        // Abschließen
+        document.getElementById('tplForm').submit();
+    }
+</script>
+{% endblock %}

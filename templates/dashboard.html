@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - TinyShare{% endblock %}
+{% block header %}System Dashboard{% endblock %}
+{% block content %}
+<div class="grid" style="grid-template-columns: repeat(3, 1fr);">
+    <!-- Kachel 1: Freigaben -->
+    <div class="card">
+        <h3>Freigaben</h3>
+        <ul class="dashboard-list">
+            {% for share in shares %}
+            <li>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <strong>{{ share.name }}</strong>
+                    <!-- Protokoll Badges -->
+                    <div style="display: flex; gap: 4px;">
+                        {% if share.smb_enabled %}<span class="badge smb" style="padding: 2px 5px; font-size: 0.65rem;">SMB</span>{% endif %}
+                        {% if share.nfs_enabled %}<span class="badge nfs" style="padding: 2px 5px; font-size: 0.65rem;">NFS</span>{% endif %}
+                    </div>
+                </div>
+                <!-- Fettgedruckte Stati -->
+                {% if share.status == 'Aktiv' %} <span style="color: #27ae60; font-weight: bold;">Aktiv</span>
+                {% elif share.status == 'Problem' %} <span style="color: #c62828; font-weight: bold;">Fehlerhaft</span>
+                {% else %} <span style="color: #6c757d; font-weight: bold;">Inaktiv</span>{% endif %}
+            </li>
+            {% else %}
+            <li style="color: var(--text-muted);">Keine Freigaben.</li>
+            {% endfor %}
+        </ul>
+    </div>
+    
+    <!-- Kachel 2: Benutzer -->
+    <div class="card">
+        <h3>TinyShare Benutzer</h3>
+        <ul class="dashboard-list">
+            {% for user in users %}
+            <li>
+                <strong>{{ user.username }}</strong>
+                {% if user.is_active %}<span style="color: #27ae60; font-weight: bold;">Aktiv</span>
+                {% else %}<span style="color: #6c757d; font-weight: bold;">Deaktiviert</span>{% endif %}
+            </li>
+            {% else %}
+            <li style="color: var(--text-muted);">Keine Benutzer.</li>
+            {% endfor %}
+        </ul>
+    </div>
+
+    <!-- Kachel 3: Dienste -->
+    <div class="card">
+        <h3>Dienste</h3>
+        <ul class="dashboard-list">
+            {% for srv in services %}
+            <li>
+                <strong>{{ srv.name }}</strong>
+                <span style="color: {% if srv.status == 'Aktiv' %}#27ae60{% else %}#c0392b{% endif %}; font-weight: bold;">
+                    {{ srv.status }}
+                </span>
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+</div>
+{% endblock %}

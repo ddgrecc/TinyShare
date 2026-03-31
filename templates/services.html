@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}Dienste-Konfiguration{% endblock %}
+{% block header %}Systemweite Basis-Einstellungen{% endblock %}
+{% block content %}
+<form action="/services/save" method="POST">
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px;">
+        
+        <!-- SAMBA KARTE -->
+        <div class="card" style="align-self: start;">
+            <h3 style="font-size: 1.1rem; border-bottom: 2px solid #3498db; padding-bottom: 10px; margin-bottom: 15px; color: var(--sidebar-bg);">Samba (SMB)</h3>
+            
+            <div class="form-group">
+                <label>Workgroup</label>
+                <input type="text" name="smb_workgroup" value="{{ conf.smb_workgroup }}" required>
+            </div>
+            
+            <div class="form-group">
+                <label>Server String (Netzwerk-Name)</label>
+                <input type="text" name="smb_server_string" value="{{ conf.smb_server_string }}">
+            </div>
+
+            <div class="form-group">
+                <label>Minimum Protokoll Version</label>
+                <select name="smb_min_protocol" style="width: 100%; padding: 10px; border-radius: 4px; border: 1px solid var(--border);">
+                    <option value="SMB2" {% if conf.smb_min_protocol == 'SMB2' %}selected{% endif %}>SMB2 (Standard, Sicher)</option>
+                    <option value="SMB3" {% if conf.smb_min_protocol == 'SMB3' %}selected{% endif %}>SMB3 (Sehr Sicher, Windows 8+)</option>
+                    <option value="NT1" {% if conf.smb_min_protocol == 'NT1' %}selected{% endif %}>NT1 / SMB1 (Legacy, Unsicher!)</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>Schreib-Verhalten (Strict Sync)</label>
+                <select name="smb_strict_sync" style="width: 100%; padding: 10px; border-radius: 4px; border: 1px solid var(--border);">
+                    <option value="yes" {% if conf.smb_strict_sync == 'yes' %}selected{% endif %}>Yes (Sicher, etwas langsamer)</option>
+                    <option value="no" {% if conf.smb_strict_sync == 'no' %}selected{% endif %}>No (Ignoriert Sync-Befehle, RAM-Cache, max. Speed)</option>
+                </select>
+            </div>
+
+            <div class="form-group checkbox-group" style="margin-top: 15px;">
+                <label style="display: flex; align-items: flex-start; gap: 8px;">
+                    <input type="checkbox" name="smb_socket_opts" value="yes" style="margin-top: 3px;" {% if conf.smb_socket_opts == 'yes' %}checked{% endif %}> 
+                    <span><strong>Netzwerk-Performance-Tuning aktivieren</strong><br><small style="color: var(--text-muted);">Aktiviert TCP_NODELAY und vergrößert die Send/Receive-Buffer</small></span>
+                </label>
+            </div>
+        </div>
+
+        <!-- NFS KARTE -->
+        <div class="card" style="align-self: start;">
+            <h3 style="font-size: 1.1rem; border-bottom: 2px solid #e67e22; padding-bottom: 10px; margin-bottom: 15px; color: var(--sidebar-bg);">NFS Server</h3>
+            
+            <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 15px;">
+                Diese Einstellungen modifizieren den NFS-Daemon auf dem Host-System (/etc/default/nfs-kernel-server).
+            </p>
+
+            <div class="form-group">
+                <label>Anzahl der Worker-Threads (RPCNFSDCOUNT)</label>
+                <select name="nfs_threads" style="width: 100%; padding: 10px; border-radius: 4px; border: 1px solid var(--border);">
+                    <option value="8" {% if conf.nfs_threads == '8' %}selected{% endif %}>8 Threads (Standard, HDD)</option>
+                    <option value="16" {% if conf.nfs_threads == '16' %}selected{% endif %}>16 Threads (SSD / schnelles Netzwerk)</option>
+                    <option value="32" {% if conf.nfs_threads == '32' %}selected{% endif %}>32 Threads (NVMe RAID)</option>
+                </select>
+            </div>
+
+            <div class="form-group checkbox-group" style="margin-top: 15px;">
+                <label style="display: flex; align-items: flex-start; gap: 8px;">
+                    <input type="checkbox" name="nfs_v4_only" value="yes" style="margin-top: 3px;" {% if conf.nfs_v4_only == 'yes' %}checked{% endif %}> 
+                    <span><strong>Nur NFS Version 4 erlauben</strong><br><small style="color: var(--text-muted);">Sperrt alte Clients aus (v2/v3). Erhöht die Sicherheit massiv.</small></span>
+                </label>
+            </div>
+        </div>
+
+    </div>
+
+    <div style="margin-top: 30px; text-align: right;">
+        <button type="submit" style="padding: 12px 30px; font-size: 1.1rem; box-shadow: 0 4px 6px rgba(52, 152, 219, 0.2);">💾 Basis-Konfiguration speichern & Dienste neustarten</button>
+    </div>
+</form>
+{% endblock %}
